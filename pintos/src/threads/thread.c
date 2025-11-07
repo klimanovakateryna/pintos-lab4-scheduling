@@ -15,6 +15,8 @@
 #include "userprog/process.h"
 #endif
 
+
+#define TIME_SLICE 1
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -23,6 +25,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+static struct list ready_list_2;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -241,6 +244,14 @@ thread_unblock (struct thread *t)
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
+}
+
+/* Check in which ready list the thread is*/
+struct thread *current_queue(struct thread *t){
+  if ((t)->queue){
+    return &ready_list_2;
+  else &ready_list;  
+  }
 }
 
 /* Returns the name of the running thread. */
