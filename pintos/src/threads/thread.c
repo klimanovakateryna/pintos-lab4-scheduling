@@ -27,11 +27,6 @@
 static struct list ready_list;
 static struct list ready_list_2;
 
-/* Initialize 20 ready lists for priority scheduling 
-*/
-for (int i = 0; i < 20; i++){
-  list_init(&ready_lists[i]);
-}
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -102,11 +97,20 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
 
+  /* Initialize 20 ready lists for priority scheduling 
+  Each queue holds threads of the same priority that are ready to run
+  */
+  for (int i = 0; i < 20; i++){
+  list_init(&ready_lists[i]);
+  }
+
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -231,12 +235,9 @@ thread_block (void)
 }
 
 /* Check in which ready list the thread is*/
-struct thread *current_list(struct thread *t){
-  for(int i = 0; i < sizeof(ready_lists); i++){
-    if ((t) -> queue) {
-      return &ready_list[i];
-    }
-  }
+static struct list *
+current_list(struct thread *t) {
+  return &ready_lists[t->priority];
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -256,7 +257,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (current_queue(t), &t->elem);
+  //when you unblocking a thread, insert it into the queue matching its priority
+  list_push_back(current_list(t), &t->elem);
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
