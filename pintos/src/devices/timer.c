@@ -118,11 +118,11 @@ timer_sleep (int64_t ticks)
 
   t->wake_up_time = timer_ticks() + ticks; // find wake-up time
 
-  list_insert_ordered(&sleeping_list, &t->elem, timer_less, NULL);  // put the thread into the ordered sleeping list 
+  list_insert_ordered(&sleeping_list, &t->elem, timer_less, NULL);  // put the thread into the sleeping list
 
   thread_block();  // put thread to sleep
 
-  intr_set_level(old_level); //restore the interrupts 
+  intr_set_level(old_level);
 
 }
 

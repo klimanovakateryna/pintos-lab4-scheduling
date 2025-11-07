@@ -91,6 +91,8 @@ struct thread
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t wake_up_time;
 
+    int queue; // the num of the queue current thread is in 
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
