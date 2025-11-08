@@ -1,8 +1,8 @@
-'''
+/*
 mlfqs2-leavebforeq
 
 Job enters queue, leaves before 1 quantum
-'''
+*/
 
 #include <stdio.h>
 #include "tests/threads/tests.h"
@@ -29,7 +29,7 @@ static void test_leavebeforeq(void){
 	struct simple_thread_data data;
 	struct lock lock;
 	int output[THREAD_CNT * ITER_CNT];
-	
+
 	lock_init (&lock);
 	lock_acquire(&lock); 
 
