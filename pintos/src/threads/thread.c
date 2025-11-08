@@ -101,7 +101,7 @@ thread_init (void)
   Each queue holds threads of the same priority that are ready to run
   */
   for (int i = 0; i < 20; i++){
-  list_init(&ready_lists[i]);
+  list_init(&ready_list[i]);
   }
 
 
@@ -237,7 +237,7 @@ thread_block (void)
 /* Check in which ready list the thread is*/
 static struct list *
 current_list(struct thread *t) {
-  return &ready_lists[t->priority];
+  return &ready_list[t->priority];
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
