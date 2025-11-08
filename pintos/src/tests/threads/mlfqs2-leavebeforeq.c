@@ -26,7 +26,7 @@ struct simple_thread_data
 static thread_func simple_thread_func;
 
 static void test_leavebeforeq(void){
-
+	//test
 }
 
 static void 
