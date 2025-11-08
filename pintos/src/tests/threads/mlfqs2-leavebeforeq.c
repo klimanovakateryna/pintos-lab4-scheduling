@@ -21,12 +21,37 @@ struct simple_thread_data
   };
 
 #define THREAD_CNT 1
-#define ITER_CNT /* ?? */
+#define ITER_CNT 1
 
 static thread_func simple_thread_func;
 
 static void test_leavebeforeq(void){
-	//test
+	struct simple_thread_data data;
+	struct lock lock;
+	int output[THREAD_CNT * ITER_CNT];
+	
+	lock_init (&lock);
+	lock_acquire(&lock); 
+
+	//set main priority to minimum to let thread run
+	printf("Main at priority %d\n",PRI_MIN);
+	thread_set_priority (PRI_MIN);
+
+	//create a thread with default priority 
+	msg("Creating one short-lived thread.");
+	thread_create("short", PRI_DEFAULT, simple_thread_func, &data);
+
+	//yield to this thread
+	msg("Main thread yielding...");
+	thread_yield();
+
+	//wait for thread to finish
+	timer_seep(10);
+
+	msg("Main thread resumed");
+
+	msg("Test done. Thread should have finished before its quantum expired.");
+
 }
 
 static void 
