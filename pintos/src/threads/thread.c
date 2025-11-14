@@ -25,8 +25,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-static struct list ready_list_2;
-
+static struct list ready_queues[QUEUES];
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -100,10 +99,11 @@ thread_init (void)
   /* Initialize 20 ready lists for priority scheduling 
   Each queue holds threads of the same priority that are ready to run
   */
-  for (int i = 0; i < 20; i++){
-  list_init(&ready_list[i]);
+  if (thread_mlfqs){
+    for (int i = 0; i < QUEUES; i++){
+      list_init(&ready_queues[i]);
   }
-
+  }
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
