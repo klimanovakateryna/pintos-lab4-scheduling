@@ -237,7 +237,7 @@ thread_block (void)
 /* Check in which ready list the thread is*/
 static struct list *
 current_list(struct thread *t) {
-  return &ready_list[t->priority];
+  return &ready_queues[t->priority];
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -258,7 +258,11 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   //when you unblocking a thread, insert it into the queue matching its priority
-  list_push_back(current_list(t), &t->elem);
+  if (thread_mlfqs){
+    list_push_back(current_list(t), &t->elem);
+  } else {
+    list_push_back(&ready_list, &t->elem);
+  }
 
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -329,8 +333,13 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur != idle_thread) {
+    if (thread_mlfqs){
+       list_push_back (current_list(cur), &cur->elem);
+    } else {
     list_push_back (&ready_list, &cur->elem);
+    }
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
