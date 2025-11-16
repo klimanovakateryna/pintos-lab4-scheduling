@@ -163,9 +163,11 @@ thread_tick (void)
   if (promotion_timer > RESET_TIME){
     promotion_timer = 0;
 
-    for (e = list_begin(&all_list); e != list_end(&all_list) e = list_next(each)){
+    struct list_elem *e;
+    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(each)){
       struct thread *t = list_entry (e, struct thread, allelem);
       t->priority = PRI_MAX;
+      t->quantum_time_spent = 0;
 
       /* Only move ready threads to highest priority ready queue */
       if (t->status != THREAD_READY){
@@ -301,15 +303,31 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   t->quantum_time_spent = 0;
-  //when you unblocking a thread, insert it into the queue matching its priority
+  
+  /*In MLFQ, when unblocking a thread, insert it into the queue matching its priority*/
   if (thread_mlfqs){
     list_push_back(current_list(t), &t->elem);
   } else {
     list_push_back(&ready_list, &t->elem);
   }
 
-  t->status = THREAD_READY;
+  /*After being added to ready queue, change the thread's status to ready */
+  t->status = THREAD_READY; 
+  struct thread *running_t = thread_current ();
+
+  /*In MLFQ, preempt current thread if unblocked thread has priority that is higher*/
+  if (thread_mlfqs) {
+    if (t->priority > running_t->priority &&
+        running_t != idle_thread)
+      {
+        intr_set_level (old_level);
+        thread_yield ();
+        return;
+      }
+  }
+
   intr_set_level (old_level);
+  
 }
 
 /* Returns the name of the running thread. */
