@@ -107,7 +107,7 @@ thread_init (void)
   */
     for (int i = 0; i < QUEUES; i++){
       list_init(&ready_queues[i]);
-      quantum_sz[i] = i + 1;
+      quantum_sz[i] = PRI_MAX - i + 1;
   }
 
   /* Set up a thread structure for the running thread. */
@@ -133,7 +133,7 @@ thread_start (void)
 
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
-  test_list();
+  //test_list();
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -164,7 +164,7 @@ thread_tick (void)
     promotion_timer = 0;
 
     struct list_elem *e;
-    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(each)){
+    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
       struct thread *t = list_entry (e, struct thread, allelem);
       t->priority = PRI_MAX;
       t->quantum_time_spent = 0;
@@ -259,6 +259,17 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+  /*MLFQ: interrupt current thread if new thread priority is higher*/
+  if (thread_mlfqs){
+    struct thread *current_thread = thread_current();
+
+    if(current_thread->priority < t->priority){
+      if(current_thread != idle_thread){
+        thread_yield();
+      }
+    }
+  }
 
   return tid;
 }
@@ -713,45 +724,45 @@ bool less(struct list_elem *wr1, struct list_elem *wr2) {
   Build a list and test that it works.
 */
 
-int test_list() {
-  struct list wordlist;
-  char *stuff[] = {"The","rain","in","Spain","falls", // static, in stack.
-		   "mainly","in","the","plain.",NULL};
-  int i;
-  struct list_elem *e;
+// int test_list() {
+//   struct list wordlist;
+//   char *stuff[] = {"The","rain","in","Spain","falls", // static, in stack.
+// 		   "mainly","in","the","plain.",NULL};
+//   int i;
+//   struct list_elem *e;
   
-  list_init(&wordlist);
+//   list_init(&wordlist);
 
-  if (list_empty(&wordlist)) printf("list is empty\n");
-  else printf("list has %d elements\n",list_size(&wordlist));
+//   if (list_empty(&wordlist)) printf("list is empty\n");
+//   else printf("list has %d elements\n",list_size(&wordlist));
 
 
-  // Create linked list of mystructs.
-  // Copy ptrs from stuff to the list words.
-  for (i = 0; stuff[i] != NULL; i++) {
-    struct mystruct *s = (struct mystruct *) malloc(sizeof(struct mystruct));
-    s->word = stuff[i];
-    list_push_back (&wordlist, &s->elem); // onto end of list
-  }
-  if (list_empty(&wordlist)) printf("list is empty\n");
-  else printf("list has %d elements\n",list_size(&wordlist));
+//   // Create linked list of mystructs.
+//   // Copy ptrs from stuff to the list words.
+//   for (i = 0; stuff[i] != NULL; i++) {
+//     struct mystruct *s = (struct mystruct *) malloc(sizeof(struct mystruct));
+//     s->word = stuff[i];
+//     list_push_back (&wordlist, &s->elem); // onto end of list
+//   }
+//   if (list_empty(&wordlist)) printf("list is empty\n");
+//   else printf("list has %d elements\n",list_size(&wordlist));
  
-  // Loop over list
-  for (e = list_begin(&wordlist); e != list_end(&wordlist); e = list_next(e)) {
-  struct mystruct *node = list_entry(e, struct mystruct, elem);
+//   // Loop over list
+//   for (e = list_begin(&wordlist); e != list_end(&wordlist); e = list_next(e)) {
+//   struct mystruct *node = list_entry(e, struct mystruct, elem);
   
-  printf("%s\n", node->word);  
-  }
+//   printf("%s\n", node->word);  
+//   }
 
-  // the smallest element in the word list using less i provied above 
-  struct list_elem *min_elem = list_min(&wordlist, less, NULL);
+//   // the smallest element in the word list using less i provied above 
+//   struct list_elem *min_elem = list_min(&wordlist, less, NULL);
   
-  // get smallest word struct 
-  struct mystruct *min_ll_node = list_entry(min_elem, struct mystruct, elem);
+//   // get smallest word struct 
+//   struct mystruct *min_ll_node = list_entry(min_elem, struct mystruct, elem);
 
-  printf("%s\n", min_ll_node->word);
+//   printf("%s\n", min_ll_node->word);
 
-  // TODO: return malloc'd memory.
-  free(min_ll_node);
-  return (0);
-}
+//   // TODO: return malloc'd memory.
+//   free(min_ll_node);
+//   return (0);
+// }
