@@ -16,6 +16,7 @@
 #endif
 
 
+
 #define TIME_SLICE 1
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -26,6 +27,11 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 static struct list ready_queues[QUEUES];
+
+/*List of the quantum sizes for each PQ*/
+int quantum_sz[QUEUES];
+
+static int promotion_timer;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -99,10 +105,9 @@ thread_init (void)
   /* Initialize 20 ready lists for priority scheduling 
   Each queue holds threads of the same priority that are ready to run
   */
-  if (thread_mlfqs){
     for (int i = 0; i < QUEUES; i++){
       list_init(&ready_queues[i]);
-  }
+      quantum_sz[i] = i + 1;
   }
 
   /* Set up a thread structure for the running thread. */
@@ -138,6 +143,42 @@ thread_tick (void)
 {
   struct thread *t = thread_current ();
 
+  if (thread_mlfqs){
+  
+  t->quantum_time_spent++; 
+  /*Once a job uses up its quantum, move down the queue*/
+  if (t->quantum_time_spent >= quantum_sz[t->priority]){
+       /* If priority > 0, reduce it*/
+      if (t->priority > PRI_MIN){
+        t->priority--;
+      }
+
+      /*Reset quantum and preempt to allow scheduler to run*/
+      t->quantum_time_spent = 0; 
+      intr_yield_on_return(); 
+  }
+
+  /* Move the threads up in priority after 50 seconds to prevent starvation*/
+  promotion_timer++;
+  if (promotion_timer > RESET_TIME){
+    promotion_timer = 0;
+
+    for (e = list_begin(&all_list); e != list_end(&all_list) e = list_next(each)){
+      struct thread *t = list_entry (e, struct thread, allelem);
+      t->priority = PRI_MAX;
+
+      /* Only move ready threads to highest priority ready queue */
+      if (t->status != THREAD_READY){
+        continue;
+      }
+      
+      list_remove (&t->elem);
+      list_push_back (&ready_queues[PRI_MAX], &t->elem);
+
+    }
+  }
+  }
+
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -147,10 +188,12 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-
+  
   /* Enforce preemption. */
+  if (!thread_mlfqs){
   if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
+    intr_yield_on_return (); 
+}
 }
 
 /* Prints thread statistics. */
@@ -257,6 +300,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  t->quantum_time_spent = 0;
   //when you unblocking a thread, insert it into the queue matching its priority
   if (thread_mlfqs){
     list_push_back(current_list(t), &t->elem);
@@ -492,7 +536,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  t->quantum_time_spent = 0;
+
+  /*Set to highest priority*/
+  if (!thread_mlfqs){
+    t->priority = priority;
+  } else {
+    t->priority = PRI_MAX;
+  }
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
@@ -521,11 +573,19 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (thread_mlfqs){
+    for(int i = QUEUES - 1; i >= 0; i--){
+      if (!list_empty (&ready_queues[i])){
+          return list_entry(list_pop_front(&ready_queues[i]), struct thread, elem);
+      } 
+      }
+        return idle_thread;
+  } else {
+  if (list_empty (&ready_list)){
     return idle_thread;
-  else
+  }else{
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
-}
+}}}
 
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
