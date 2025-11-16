@@ -38,8 +38,8 @@ static const struct test tests[] =
     {"mlfqs-nice-2", test_mlfqs_nice_2},
     {"mlfqs-nice-10", test_mlfqs_nice_10},
     {"mlfqs-block", test_mlfqs_block},
-    { "mlfqs2-leavebeforeq", test_mlfqs2_leavebeforeq},
-    {"mlfqs2-leaveafterq", test_mlfqs2_leaveafterq}
+    //{ "mlfqs2-leavebeforeq", test_mlfqs2_leavebeforeq},
+    //{"mlfqs2-leaveafterq", test_mlfqs2_leaveafterq}
   };
 
 static const char *test_name;

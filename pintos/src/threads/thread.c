@@ -15,8 +15,6 @@
 #include "userprog/process.h"
 #endif
 
-
-
 #define TIME_SLICE 1
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -26,11 +24,16 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* Array of ready queues from 0 to 19, each corresponding to 
+  priority levels.*/
+/* Used with -mlfqs*/
 static struct list ready_queues[QUEUES];
 
-/*List of the quantum sizes for each PQ*/
+/* Quantum size for each priority level*/
 int quantum_sz[QUEUES];
 
+/*Counts how many ticks have passed since the last promotion*/
 static int promotion_timer;
 
 /* List of all processes.  Processes are added to this list
@@ -102,13 +105,17 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
 
-  /* Initialize 20 ready lists for priority scheduling 
-  Each queue holds threads of the same priority that are ready to run
-  */
+
+  /* Initialize 20 MLFQ queues and set their quantum.
+     The quantum at each priority be one quantum
+     greater than it was for the previous (one priority less) 
+     queue. The highest priority queue runs for only one quantum.
+ */
     for (int i = 0; i < QUEUES; i++){
       list_init(&ready_queues[i]);
-      quantum_sz[i] = PRI_MAX - i + 1;
+      quantum_sz[i] = i + 1;
   }
+    promotion_timer = 0;
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -133,6 +140,7 @@ thread_start (void)
 
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
+
   //test_list();
 }
 
@@ -141,44 +149,47 @@ thread_start (void)
 void
 thread_tick (void) 
 {
+
   struct thread *t = thread_current ();
 
+  /*MLFQ: keep track of how long this thread is running
+   at a current priority level*/
   if (thread_mlfqs){
-  
   t->quantum_time_spent++; 
-  /*Once a job uses up its quantum, move down the queue*/
-  if (t->quantum_time_spent >= quantum_sz[t->priority]){
-       /* If priority > 0, reduce it*/
-      if (t->priority > PRI_MIN){
-        t->priority--;
-      }
 
-      /*Reset quantum and preempt to allow scheduler to run*/
+  /*Once a job uses up its quantum, move down the queue*/
+  if (t->quantum_time_spent >= quantum_sz[t->queue]){
+      /* If we're not already in the lowest-priority queue, move down one. */
+      if (t->queue < QUEUES - 1){
+        t->queue++;
+      }
+      
+      /*Reset quantum and preempt so another thread can be chosen. */
       t->quantum_time_spent = 0; 
       intr_yield_on_return(); 
   }
 
-  /* Move the threads up in priority after 50 seconds to prevent starvation*/
+  /*MLFQ: Move the threads up in priority after RESET_TIME ticks to avoid starvation*/
   promotion_timer++;
-  if (promotion_timer > RESET_TIME){
+  if (promotion_timer >= RESET_TIME){
     promotion_timer = 0;
-
     struct list_elem *e;
-    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
-      struct thread *t = list_entry (e, struct thread, allelem);
-      t->priority = PRI_MAX;
-      t->quantum_time_spent = 0;
 
-      /* Only move ready threads to highest priority ready queue */
-      if (t->status != THREAD_READY){
-        continue;
-      }
+    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+      struct thread *thread = list_entry (e, struct thread, allelem);
+
+      /* Move this thread to the top queue with a new quantum*/
+        thread->queue = 0;
+        thread->quantum_time_spent = 0;
       
-      list_remove (&t->elem);
-      list_push_back (&ready_queues[PRI_MAX], &t->elem);
+      /* Move ready threads from a current queue into queue 0. */
+      if (thread->status == THREAD_READY) {
+        list_remove(&thread->elem);
+        list_push_back(&ready_queues[0], &thread->elem);
+      } 
 
     }
-  }
+    }
   }
 
   /* Update statistics. */
@@ -260,17 +271,6 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  /*MLFQ: interrupt current thread if new thread priority is higher*/
-  if (thread_mlfqs){
-    struct thread *current_thread = thread_current();
-
-    if(current_thread->priority < t->priority){
-      if(current_thread != idle_thread){
-        thread_yield();
-      }
-    }
-  }
-
   return tid;
 }
 
@@ -290,11 +290,6 @@ thread_block (void)
   schedule ();
 }
 
-/* Check in which ready list the thread is*/
-static struct list *
-current_list(struct thread *t) {
-  return &ready_queues[t->priority];
-}
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -313,28 +308,15 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+
+  /*Reset quantum time*/
   t->quantum_time_spent = 0;
   
-  /*In MLFQ, when unblocking a thread, insert it into the queue matching its priority*/
+  /*MLFQ: when unblocking a thread, insert it back into its priority queue*/
   if (thread_mlfqs){
-    list_push_back(current_list(t), &t->elem);
+    list_push_back(&ready_queues[t->queue], &t->elem);
   } else {
     list_push_back(&ready_list, &t->elem);
-  }
-
-  /*After being added to ready queue, change the thread's status to ready */
-  t->status = THREAD_READY; 
-  struct thread *running_t = thread_current ();
-
-  /*In MLFQ, preempt current thread if unblocked thread has priority that is higher*/
-  if (thread_mlfqs) {
-    if (t->priority > running_t->priority &&
-        running_t != idle_thread)
-      {
-        intr_set_level (old_level);
-        thread_yield ();
-        return;
-      }
   }
 
   intr_set_level (old_level);
@@ -395,6 +377,10 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+static struct list * current_list(struct thread *t){
+    return &ready_queues[t->queue];
+}
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
@@ -406,6 +392,8 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
+
+  /*If a thread isn't idle, put it back on the ready queue. */
   if (cur != idle_thread) {
     if (thread_mlfqs){
        list_push_back (current_list(cur), &cur->elem);
@@ -413,6 +401,7 @@ thread_yield (void)
     list_push_back (&ready_list, &cur->elem);
     }
   }
+
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -567,12 +556,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->quantum_time_spent = 0;
 
-  /*Set to highest priority*/
-  if (!thread_mlfqs){
-    t->priority = priority;
-  } else {
-    t->priority = PRI_MAX;
-  }
+  t->priority = priority;     
+  
+  t->queue = 0;     
+  t->quantum_time_spent = 0;           
 
   t->magic = THREAD_MAGIC;
 
@@ -603,18 +590,19 @@ static struct thread *
 next_thread_to_run (void) 
 {
   if (thread_mlfqs){
-    for(int i = QUEUES - 1; i >= 0; i--){
+    for(int i = 0; i < QUEUES; i++){
       if (!list_empty (&ready_queues[i])){
           return list_entry(list_pop_front(&ready_queues[i]), struct thread, elem);
       } 
       }
         return idle_thread;
-  } else {
+  } 
+
   if (list_empty (&ready_list)){
     return idle_thread;
   }else{
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
-}}}
+}}
 
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
