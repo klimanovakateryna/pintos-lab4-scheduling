@@ -182,7 +182,7 @@ thread_tick (void)
         thread->queue = QUEUES - 1;
         thread->quantum_time_spent = 0;
       
-      /* Move READY threads into the highest-priority queue (19). */
+      /* Move READY threads into the highest-priority queue 19. */
       if (thread->status == THREAD_READY) {
         list_remove(&thread->elem);
         list_push_back(&ready_queues[QUEUES - 1], &thread->elem);
@@ -309,8 +309,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
 
-  /*Reset quantum time*/
-  t->quantum_time_spent = 0;
+
   
   /*MLFQ: when unblocking a thread, insert it back into its priority queue*/
   if (thread_mlfqs){
@@ -319,6 +318,7 @@ thread_unblock (struct thread *t)
     list_push_back(&ready_list, &t->elem);
   }
 
+  t->status = THREAD_READY; 
   intr_set_level (old_level);
   
 }
