@@ -15,7 +15,6 @@
 #include "userprog/process.h"
 #endif
 
-
 #define TIME_SLICE 1
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -25,8 +24,17 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-static struct list ready_list_2;
 
+/* Array of ready queues from 0 to 19, each corresponding to 
+  priority levels.*/
+/* Used with -mlfqs*/
+static struct list ready_queues[QUEUES];
+
+/* Quantum size for each priority level*/
+int quantum_sz[QUEUES];
+
+/*Counts how many ticks have passed since the last promotion*/
+static int promotion_timer;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -97,13 +105,17 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
 
-  /* Initialize 20 ready lists for priority scheduling 
-  Each queue holds threads of the same priority that are ready to run
-  */
-  for (int i = 0; i < 20; i++){
-  list_init(&ready_list[i]);
-  }
 
+  /* Initialize 20 MLFQ queues and set their quantum.
+     The quantum at each priority be one quantum
+     greater than it was for the previous (one priority less) 
+     queue. The highest priority queue runs for only one quantum.
+ */
+    for (int i = 0; i < QUEUES; i++){
+      list_init(&ready_queues[i]);
+      quantum_sz[i] = QUEUES - i;
+  }
+    promotion_timer = 0;
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -128,7 +140,8 @@ thread_start (void)
 
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
-  test_list();
+
+  //test_list();
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -136,7 +149,48 @@ thread_start (void)
 void
 thread_tick (void) 
 {
+
   struct thread *t = thread_current ();
+
+  /*MLFQ: keep track of how long this thread is running
+   at a current priority level*/
+  if (thread_mlfqs){
+  t->quantum_time_spent++; 
+
+  /*Once a job uses up its quantum, move down the queue*/
+  if (t->quantum_time_spent >= quantum_sz[t->queue]){
+    /* Move the thread to the next lower priority */
+      if (t->queue > 0){
+        t->queue--;
+      }
+      
+      /*Reset quantum and preempt so another thread can be chosen. */
+      t->quantum_time_spent = 0; 
+      intr_yield_on_return(); 
+  }
+
+  /*MLFQ: Move the threads up in priority after RESET_TIME ticks to avoid starvation*/
+  promotion_timer++;
+  if (promotion_timer >= RESET_TIME){
+    promotion_timer = 0;
+    struct list_elem *e;
+
+    for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
+      struct thread *thread = list_entry (e, struct thread, allelem);
+
+      /* Move this thread to the top queue with a new quantum*/
+        thread->queue = QUEUES - 1;
+        thread->quantum_time_spent = 0;
+      
+      /* Move READY threads into the highest-priority queue 19. */
+      if (thread->status == THREAD_READY) {
+        list_remove(&thread->elem);
+        list_push_back(&ready_queues[QUEUES - 1], &thread->elem);
+      } 
+
+    }
+    }
+  }
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -147,10 +201,12 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
-
+  
   /* Enforce preemption. */
+  if (!thread_mlfqs){
   if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
+    intr_yield_on_return (); 
+}
 }
 
 /* Prints thread statistics. */
@@ -234,11 +290,6 @@ thread_block (void)
   schedule ();
 }
 
-/* Check in which ready list the thread is*/
-static struct list *
-current_list(struct thread *t) {
-  return &ready_list[t->priority];
-}
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
@@ -257,11 +308,19 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  //when you unblocking a thread, insert it into the queue matching its priority
-  list_push_back(current_list(t), &t->elem);
 
-  t->status = THREAD_READY;
+
+  
+  /*MLFQ: when unblocking a thread, insert it back into its priority queue*/
+  if (thread_mlfqs){
+    list_push_back(&ready_queues[t->queue], &t->elem);
+  } else {
+    list_push_back(&ready_list, &t->elem);
+  }
+
+  t->status = THREAD_READY; 
   intr_set_level (old_level);
+  
 }
 
 /* Returns the name of the running thread. */
@@ -318,6 +377,11 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+/* Get the ready queue for this thread's current priority level. */
+static struct list * current_list(struct thread *t){
+    return &ready_queues[t->queue];
+}
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void
@@ -329,8 +393,16 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+
+  /*If a thread isn't idle, put it into its MLFQ queue or the ready list.*/
+  if (cur != idle_thread) {
+    if (thread_mlfqs){
+       list_push_back (current_list(cur), &cur->elem);
+    } else {
     list_push_back (&ready_list, &cur->elem);
+    }
+  }
+
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -483,7 +555,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  t->quantum_time_spent = 0;
+
+  t->priority = priority;     
+  
+  /*Start at highest priority 19*/
+  t->queue = QUEUES - 1;    
+  t->quantum_time_spent = 0;           
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
@@ -512,11 +591,24 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+   /* MLFQ: choose the next thread from the highest non-empty ready queue. 
+      If no empty queues, run the idle thread. */
+  if (thread_mlfqs){
+    for (int i = QUEUES - 1; i >= 0; i--){
+      if (!list_empty (&ready_queues[i])){
+          return list_entry(list_pop_front(&ready_queues[i]), struct thread, elem);
+      } 
+      }
+        return idle_thread;
+  } 
+
+  if (list_empty (&ready_list)){
     return idle_thread;
-  else
+  }else{
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
-}
+  }
+  
+  }
 
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
@@ -626,45 +718,45 @@ bool less(struct list_elem *wr1, struct list_elem *wr2) {
   Build a list and test that it works.
 */
 
-int test_list() {
-  struct list wordlist;
-  char *stuff[] = {"The","rain","in","Spain","falls", // static, in stack.
-		   "mainly","in","the","plain.",NULL};
-  int i;
-  struct list_elem *e;
+// int test_list() {
+//   struct list wordlist;
+//   char *stuff[] = {"The","rain","in","Spain","falls", // static, in stack.
+// 		   "mainly","in","the","plain.",NULL};
+//   int i;
+//   struct list_elem *e;
   
-  list_init(&wordlist);
+//   list_init(&wordlist);
 
-  if (list_empty(&wordlist)) printf("list is empty\n");
-  else printf("list has %d elements\n",list_size(&wordlist));
+//   if (list_empty(&wordlist)) printf("list is empty\n");
+//   else printf("list has %d elements\n",list_size(&wordlist));
 
 
-  // Create linked list of mystructs.
-  // Copy ptrs from stuff to the list words.
-  for (i = 0; stuff[i] != NULL; i++) {
-    struct mystruct *s = (struct mystruct *) malloc(sizeof(struct mystruct));
-    s->word = stuff[i];
-    list_push_back (&wordlist, &s->elem); // onto end of list
-  }
-  if (list_empty(&wordlist)) printf("list is empty\n");
-  else printf("list has %d elements\n",list_size(&wordlist));
+//   // Create linked list of mystructs.
+//   // Copy ptrs from stuff to the list words.
+//   for (i = 0; stuff[i] != NULL; i++) {
+//     struct mystruct *s = (struct mystruct *) malloc(sizeof(struct mystruct));
+//     s->word = stuff[i];
+//     list_push_back (&wordlist, &s->elem); // onto end of list
+//   }
+//   if (list_empty(&wordlist)) printf("list is empty\n");
+//   else printf("list has %d elements\n",list_size(&wordlist));
  
-  // Loop over list
-  for (e = list_begin(&wordlist); e != list_end(&wordlist); e = list_next(e)) {
-  struct mystruct *node = list_entry(e, struct mystruct, elem);
+//   // Loop over list
+//   for (e = list_begin(&wordlist); e != list_end(&wordlist); e = list_next(e)) {
+//   struct mystruct *node = list_entry(e, struct mystruct, elem);
   
-  printf("%s\n", node->word);  
-  }
+//   printf("%s\n", node->word);  
+//   }
 
-  // the smallest element in the word list using less i provied above 
-  struct list_elem *min_elem = list_min(&wordlist, less, NULL);
+//   // the smallest element in the word list using less i provied above 
+//   struct list_elem *min_elem = list_min(&wordlist, less, NULL);
   
-  // get smallest word struct 
-  struct mystruct *min_ll_node = list_entry(min_elem, struct mystruct, elem);
+//   // get smallest word struct 
+//   struct mystruct *min_ll_node = list_entry(min_elem, struct mystruct, elem);
 
-  printf("%s\n", min_ll_node->word);
+//   printf("%s\n", min_ll_node->word);
 
-  // TODO: return malloc'd memory.
-  free(min_ll_node);
-  return (0);
-}
+//   // TODO: return malloc'd memory.
+//   free(min_ll_node);
+//   return (0);
+// }
