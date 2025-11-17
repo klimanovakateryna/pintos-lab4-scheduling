@@ -113,7 +113,7 @@ thread_init (void)
  */
     for (int i = 0; i < QUEUES; i++){
       list_init(&ready_queues[i]);
-      quantum_sz[i] = i + 1;
+      quantum_sz[i] = QUEUES - i;
   }
     promotion_timer = 0;
 
@@ -159,9 +159,9 @@ thread_tick (void)
 
   /*Once a job uses up its quantum, move down the queue*/
   if (t->quantum_time_spent >= quantum_sz[t->queue]){
-      /* If we're not already in the lowest-priority queue, move down one. */
-      if (t->queue < QUEUES - 1){
-        t->queue++;
+    /* Move the thread to the next lower priority */
+      if (t->queue > 0){
+        t->queue--;
       }
       
       /*Reset quantum and preempt so another thread can be chosen. */
@@ -179,13 +179,13 @@ thread_tick (void)
       struct thread *thread = list_entry (e, struct thread, allelem);
 
       /* Move this thread to the top queue with a new quantum*/
-        thread->queue = 0;
+        thread->queue = QUEUES - 1;
         thread->quantum_time_spent = 0;
       
-      /* Move ready threads from a current queue into queue 0. */
+      /* Move READY threads into the highest-priority queue (19). */
       if (thread->status == THREAD_READY) {
         list_remove(&thread->elem);
-        list_push_back(&ready_queues[0], &thread->elem);
+        list_push_back(&ready_queues[QUEUES - 1], &thread->elem);
       } 
 
     }
@@ -377,6 +377,7 @@ thread_exit (void)
   NOT_REACHED ();
 }
 
+/* Get the ready queue for this thread's current priority level. */
 static struct list * current_list(struct thread *t){
     return &ready_queues[t->queue];
 }
@@ -393,7 +394,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
 
-  /*If a thread isn't idle, put it back on the ready queue. */
+  /*If a thread isn't idle, put it into its MLFQ queue or the ready list.*/
   if (cur != idle_thread) {
     if (thread_mlfqs){
        list_push_back (current_list(cur), &cur->elem);
@@ -558,7 +559,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
   t->priority = priority;     
   
-  t->queue = 0;     
+  /*Start at highest priority 19*/
+  t->queue = QUEUES - 1;    
   t->quantum_time_spent = 0;           
 
   t->magic = THREAD_MAGIC;
@@ -589,8 +591,10 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
+   /* MLFQ: choose the next thread from the highest non-empty ready queue. 
+      If no empty queues, run the idle thread. */
   if (thread_mlfqs){
-    for(int i = 0; i < QUEUES; i++){
+    for (int i = QUEUES - 1; i >= 0; i--){
       if (!list_empty (&ready_queues[i])){
           return list_entry(list_pop_front(&ready_queues[i]), struct thread, elem);
       } 
@@ -602,7 +606,9 @@ next_thread_to_run (void)
     return idle_thread;
   }else{
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
-}}
+  }
+  
+  }
 
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
