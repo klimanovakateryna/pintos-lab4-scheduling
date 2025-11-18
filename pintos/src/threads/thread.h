@@ -27,6 +27,8 @@ typedef int tid_t;
 /*MLFQ*/
 #define QUEUES 20
 #define RESET_TIME 50 
+#define NUM_MLFQS (PRI_MAX - PRI_MIN + 1) 
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The

@@ -17,7 +17,7 @@ struct simple_thread_data
     int id;                     /* Sleeper ID. */
     int iterations;             /* Iterations so far. */
     struct lock *lock;          /* Lock on output. */
-    int **op;                   /* Output buffer position. */
+    //int **op;                   /* Output buffer position. */
   };
 
 #define THREAD_CNT 1
@@ -25,13 +25,14 @@ struct simple_thread_data
 
 static thread_func simple_thread_func;
 
-static void test_leavebeforeq(void){
+void test_mlfqs2_leavebeforeq(void){
 	struct simple_thread_data data;
 	struct lock lock;
-	int output[THREAD_CNT * ITER_CNT];
-
+	
 	lock_init (&lock);
-	lock_acquire(&lock); 
+	data.lock = &lock;
+	data.id = 1;
+	data.iterations = 0;
 
 	//set main priority to minimum to let thread run
 	printf("Main at priority %d\n",PRI_MIN);
@@ -46,7 +47,7 @@ static void test_leavebeforeq(void){
 	thread_yield();
 
 	//wait for thread to finish
-	timer_seep(10);
+	timer_sleep(10);
 
 	msg("Main thread resumed");
 
@@ -63,8 +64,8 @@ simple_thread_func (void *data_)
   for (i = 0; i < ITER_CNT; i++) 
     {
       lock_acquire (data->lock);
-
-      *(*data->op)++ = data->id;
+      data->iterations++;
+      msg("Thread iteration %d complete", i + 1);
       lock_release (data->lock);
       thread_yield ();
     }

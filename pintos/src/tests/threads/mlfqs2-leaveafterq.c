@@ -15,6 +15,8 @@ Job enters queue, leaves after 1 quantum and should have a lower priority as a r
 struct simple_thread_data 
   {
     int id;                     /* Sleeper ID. */
+    int initial_priority;
+    int final_priority;
     int iterations;             /* Iterations so far. */
     struct lock *lock;          /* Lock on output. */
     int **op;                   /* Output buffer position. */
@@ -25,7 +27,7 @@ struct simple_thread_data
 
 static thread_func simple_thread_func;
 
-static void test_leaveafterq(void){
+void test_mlfqs2_leaveafterq(void){
 	struct simple_thread_data data;
     struct lock lock;
 
