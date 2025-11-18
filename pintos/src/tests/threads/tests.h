@@ -34,6 +34,9 @@ extern test_func test_mlfqs_nice_10;
 extern test_func test_mlfqs_block;
 extern test_func test_mlfqs2_leavebeforeq;
 extern test_func test_mlfqs2_leaveafterq;
+extern test_func test_mlfqs2_longproc;
+extern test_func test_mlfqs2_shortlong;
+//extern test_func test_mlfqs2_roundrobin;
 
 void msg (const char *, ...);
 void fail (const char *, ...);

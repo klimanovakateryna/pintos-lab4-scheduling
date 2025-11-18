@@ -9,9 +9,11 @@ priority-donate-nest priority-donate-sema priority-donate-lower		\
 priority-fifo priority-preempt priority-sema priority-condvar		\
 priority-donate-chain                                                   \
 mlfqs-load-1 mlfqs-load-60 mlfqs-load-avg mlfqs-recent-1 mlfqs-fair-2	\
-mlfqs-fair-20 mlfqs-nice-2 mlfqs-nice-10 mlfqs-block)				\
-mlfqs2-leavebeforeq \
-mlfqs2-leaveafterq
+mlfqs-fair-20 mlfqs-nice-2 mlfqs-nice-10 mlfqs-block				\
+mlfqs2-leavebeforeq mlfqs2-leaveafterq						\
+mlfqs2-longproc.c 											\
+mlfqs2-shortlong.c 											\
+)
 
 
 # Sources for tests.
@@ -39,6 +41,10 @@ tests/threads_SRC += tests/threads/mlfqs-load-avg.c
 tests/threads_SRC += tests/threads/mlfqs-recent-1.c
 tests/threads_SRC += tests/threads/mlfqs-fair.c
 tests/threads_SRC += tests/threads/mlfqs-block.c
+tests/threads_SRC += tests/threads/mlfqs2-leavebeforeq.c
+tests/threads_SRC += tests/threads/mlfqs2-leaveafterq.c
+tests/threads_SRC += tests/threads/mlfqs2-longproc.c
+tests/threads_SRC += tests/threads/mlfqs2-shortlong.c
 
 MLFQS_OUTPUTS = 				\
 tests/threads/mlfqs-load-1.output		\
